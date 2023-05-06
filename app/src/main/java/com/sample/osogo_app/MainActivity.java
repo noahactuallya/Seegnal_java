@@ -10,9 +10,11 @@ import android.graphics.Matrix;
 import android.graphics.drawable.BitmapDrawable;
 import android.media.ExifInterface;
 import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.util.Base64;
 import android.util.Log;
 import android.view.ViewManager;
 import android.widget.Button;
@@ -26,11 +28,23 @@ import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.core.content.res.ResourcesCompat;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -243,6 +257,15 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.w(TAG, "onActivityResult Error !", e);
         }
+
+        if (requestCode == REQUEST_TAKE_PHOTO && resultCode == RESULT_OK) {
+            // 찍은 사진을 가져옴
+            Bitmap bitmap = BitmapFactory.decodeFile(mCurrentPhotoPath);
+
+            // 텍스트 변환 작업 실행
+            CaptionTask captionTask = new CaptionTask();
+            captionTask.execute(bitmap);
+        }
     }
 
     //카메라에 맞게 이미지 로테이션
@@ -298,5 +321,78 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private class CaptionTask extends AsyncTask<Bitmap, Void, String> {
+        // REST API
+        private static final String API_URL = "https://seegnal.pythonanywhere.com/api/v1/caption";
 
+        @Override
+        protected String doInBackground(Bitmap... bitmaps) {
+            Bitmap bitmap = bitmaps[0];
+            ByteArrayOutputStream stream = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+            byte[] byteArray = stream.toByteArray();
+
+            try {
+                // API 서버로 POST 요청을 보냄
+                URL url = new URL(API_URL);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "multipart/form-data;boundary=" + BOUNDARY);
+                conn.setDoOutput(true);
+
+                // 바이너리 데이터 전송을 위한 파트를 생성하고 전송
+                DataOutputStream out = new DataOutputStream(conn.getOutputStream());
+                out.writeBytes("--" + BOUNDARY + "\r\n");
+                out.writeBytes("Content-Disposition: form-data; name=\"image\";filename=\"" + "image.png" + "\"" + "\r\n");
+                out.writeBytes("Content-Type: image/png\r\n\r\n");
+                out.write(byteArray);
+                out.writeBytes("\r\n");
+                out.writeBytes("--" + BOUNDARY + "--\r\n");
+                out.flush();
+                out.close();
+
+                if (conn.getResponseCode() != HttpURLConnection.HTTP_OK && conn.getResponseCode() != HttpURLConnection.HTTP_CREATED) {
+                    throw new RuntimeException("Failed : HTTP error code : " + conn.getResponseCode());
+                }
+
+                // 응답을 받아옴
+                InputStream inputStream = conn.getInputStream();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+                reader.close();
+                conn.disconnect();
+
+                // JSON 파싱
+                JSONObject jsonObject = new JSONObject(response.toString());
+                String caption = jsonObject.getString("text");
+                return caption;
+            } catch (IOException e) {
+                Log.e(TAG, "Error occurred while sending POST request: " + e.getMessage());
+                return null;
+            } catch (JSONException e) {
+            Log.e(TAG, "Error occurred while parsing JSON response", e);
+            return null;
+            } catch (RuntimeException e) {
+            Log.e(TAG, "Error occurred while parsing JSON response: " + e.getMessage());
+            return null;
+            }
+        }
+
+        @Override
+        protected void onPostExecute(String result) {
+            if (result != null) {
+                // 텍스트 내용을 팝업 메세지로 출력
+                Toast.makeText(MainActivity.this, result, Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(MainActivity.this, "Error occurred while sending POST request.", Toast.LENGTH_SHORT).show();
+            }
+        }
+
+        // multipart/form-data에서 사용하는 boundary 문자열을 생성합니다.
+        private final String BOUNDARY = "---------------------------" + System.currentTimeMillis();
+    }
 }
