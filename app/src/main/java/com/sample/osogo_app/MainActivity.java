@@ -21,7 +21,9 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.Toast;
+import android.speech.tts.TextToSpeech;
 
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -48,6 +50,7 @@ import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -59,6 +62,8 @@ public class MainActivity extends AppCompatActivity {
     private Button btnCamera, btnSave;
     private ImageView ivCapture;
     private String mCurrentPhotoPath;
+    private DialogActivity dialog;
+    private TextToSpeech tts;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,12 +78,12 @@ public class MainActivity extends AppCompatActivity {
 
         loadImgArr();
 
-        captureCamera();
+        captureCamera(); // 어플 실행 시 촬영 시작
 
-        //촬영
+        // 첫 촬영 이후 다음 촬영은 버튼 누르면 시작
         btnCamera.setOnClickListener(v -> captureCamera());
 
-        //저장
+        // 버튼 누르면 촬영한 이미지 저장
         btnSave.setOnClickListener(v -> {
 
             try {
@@ -323,7 +328,7 @@ public class MainActivity extends AppCompatActivity {
 
     private class CaptionTask extends AsyncTask<Bitmap, Void, String> {
         // REST API
-        private static final String API_URL = "https://seegnal.pythonanywhere.com/api/v1/caption";
+        private static final String API_URL = "https://seegnal.pythonanywhere.com/api/v2/caption_kr";
 
         @Override
         protected String doInBackground(Bitmap... bitmaps) {
@@ -386,10 +391,31 @@ public class MainActivity extends AppCompatActivity {
         protected void onPostExecute(String result) {
             if (result != null) {
                 // 텍스트 내용을 팝업 메세지로 출력
-                Toast.makeText(MainActivity.this, result, Toast.LENGTH_SHORT).show();
+                dialog = new DialogActivity(MainActivity.this, result);
+                dialog.show();
             } else {
-                Toast.makeText(MainActivity.this, "Error occurred while sending POST request.", Toast.LENGTH_SHORT).show();
+                result = "서버와의 통신에 문제가 발생했습니다.";
+                dialog = new DialogActivity(MainActivity.this, result);
+                dialog.show();
             }
+
+            // 텍스트 내용을 음성 메세지로 출력
+            String finalResult = result;
+            tts = new TextToSpeech(MainActivity.this, new TextToSpeech.OnInitListener() {
+                @Override
+                public void onInit(int status) {
+                    if(status != android.speech.tts.TextToSpeech.ERROR) {
+                        tts.setLanguage(Locale.KOREAN);
+                        tts.setPitch(1.0f);
+                        tts.setSpeechRate(1.0f);
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            tts.speak(finalResult, TextToSpeech.QUEUE_FLUSH, null, null);
+                        } else {
+                            tts.speak(finalResult, TextToSpeech.QUEUE_FLUSH, null);
+                        }
+                    }
+                }
+            });
         }
 
         // multipart/form-data에서 사용하는 boundary 문자열을 생성합니다.
