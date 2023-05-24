@@ -1,34 +1,28 @@
 package com.sample.osogo_app;
 
-import android.Manifest;
-import android.content.Intent;
+import android.app.Activity;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Matrix;
 import android.graphics.drawable.BitmapDrawable;
-import android.media.ExifInterface;
-import android.net.Uri;
+import android.hardware.Camera;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraManager;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.MediaStore;
-import android.util.Base64;
 import android.util.Log;
-import android.view.ViewManager;
+import android.view.View;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.ListView;
 import android.widget.Toast;
 import android.speech.tts.TextToSpeech;
 
-import androidx.annotation.RequiresApi;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-import androidx.core.content.FileProvider;
-import androidx.core.content.res.ResourcesCompat;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -37,133 +31,167 @@ import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "CameraActivity";
+    private static CameraManager cameraManager;
+    private static boolean flashOn = false;
 
-    public static final int REQUEST_TAKE_PHOTO = 10;
-    public static final int REQUEST_PERMISSION = 11;
-
-    private Button btnCamera, btnSave;
-    private ImageView ivCapture;
-    private String mCurrentPhotoPath;
-    private DialogActivity dialog;
-    private TextToSpeech tts;
+    Button btnCamera;
+    ImageView ivCapture;
+    DialogActivity dialog;
+    TextToSpeech tts;
+    CameraSurfaceView surfaceView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        checkPermission(); //권한체크
-
         ivCapture = findViewById(R.id.ivCapture); //ImageView 선언
         btnCamera = findViewById(R.id.btnCapture); //Button 선언
-        btnSave = findViewById(R.id.btnSave); //Button 선언
+        surfaceView = findViewById(R.id.surfaceView); //SurfaceView 선언
 
-        loadImgArr();
-
-        captureCamera(); // 어플 실행 시 촬영 시작
+        // 최초 실행 여부 판단
+        SharedPreferences pref = getSharedPreferences("isFirst", Activity.MODE_PRIVATE);
+        boolean first = pref.getBoolean("isFirst", false);
+        if (!first) {
+            Log.d("Is first Time?", "first");
+            SharedPreferences.Editor editor = pref.edit();
+            editor.putBoolean("isFirst", true);
+            editor.commit();
+            // 최초 실행 시 안내 문구
+            String info = "시그널의 안내 문구";
+            onPostExecute_Info(info);
+        } else {
+            Log.d("Is first Time?", "not first");
+        }
 
         // 첫 촬영 이후 다음 촬영은 버튼 누르면 시작
-        btnCamera.setOnClickListener(v -> captureCamera());
+        btnCamera.setOnClickListener(v -> capture());
 
-        // 버튼 누르면 촬영한 이미지 저장
+        /* 버튼 누르면 촬영한 이미지 저장
         btnSave.setOnClickListener(v -> {
-
             try {
-
                 BitmapDrawable drawable = (BitmapDrawable) ivCapture.getDrawable();
                 Bitmap bitmap = drawable.getBitmap();
 
-                //찍은 사진이 없으면
+                // 찍은 사진이 없으면
                 if (bitmap == null) {
                     Toast.makeText(this, "저장할 사진이 없습니다.", Toast.LENGTH_SHORT).show();
                 } else {
-                    //저장
+                    // 저장
                     saveImg();
-                    mCurrentPhotoPath = ""; //initialize
                 }
-
             } catch (Exception e) {
                 Log.w(TAG, "SAVE ERROR!", e);
+            }
+        }); */
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        switch (requestCode){
+            case 101:
+                if(grantResults.length > 0){
+                    if(grantResults[0] == PackageManager.PERMISSION_GRANTED){
+                        Toast.makeText(this, "카메라 권한 사용자가 승인함",Toast.LENGTH_LONG).show();
+                    }
+                    else if(grantResults[0] == PackageManager.PERMISSION_DENIED){
+                        Toast.makeText(this, "카메라 권한 사용자가 허용하지 않음.",Toast.LENGTH_LONG).show();
+                    }
+                    else{
+                        Toast.makeText(this, "수신권한 부여받지 못함.",Toast.LENGTH_LONG).show();
+                    }
+                }
+        }
+    }
+
+    public void capture(){
+        surfaceView.capture((data, camera) -> {
+            //bytearray 형식으로 전달
+            //이걸이용해서 이미지뷰로 보여주거나 파일로 저장
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = 8; // 1/8사이즈로 보여주기
+            Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length); //data 어레이 안에 있는 데이터 불러와서 비트맵에 저장
+
+            int targetWidth = ivCapture.getWidth();
+            int targetHeight = ivCapture.getHeight();
+
+            int width = bitmap.getWidth();
+            int height = bitmap.getHeight();
+
+            float scaleRatio = Math.min((float) targetWidth / width, (float) targetHeight / height); // 비율 계산
+
+            Matrix matrix = new Matrix();
+            matrix.postScale(scaleRatio, scaleRatio);
+            matrix.postRotate(90);
+
+            Bitmap resizedBitmap = Bitmap.createBitmap(bitmap, 0,0,width,height,matrix,true);
+            BitmapDrawable bmd = new BitmapDrawable(getResources(), resizedBitmap);
+
+            ivCapture.setImageDrawable(bmd);//이미지뷰에 사진 보여주기
+            camera.startPreview();
+
+            // 텍스트 변환 작업 실행
+            CaptionTask captionTask = new CaptionTask();
+            captionTask.execute(resizedBitmap);
+        });
+    }
+
+    protected void onPostExecute_Info(String result) {
+        if (result != null) {
+            // 텍스트 내용을 팝업 메세지로 출력
+            dialog = new DialogActivity(MainActivity.this, result);
+            dialog.show();
+        } else {
+            result = "안내 문구가 없습니다.";
+            dialog = new DialogActivity(MainActivity.this, result);
+            dialog.show();
+        }
+
+        // 텍스트 내용을 음성 메세지로 출력
+        String finalResult = result;
+        tts = new TextToSpeech(MainActivity.this, new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if(status != android.speech.tts.TextToSpeech.ERROR) {
+                    tts.setLanguage(Locale.KOREAN);
+                    tts.setPitch(1.0f);
+                    tts.setSpeechRate(1.0f);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        tts.speak(finalResult, TextToSpeech.QUEUE_FLUSH, null, null);
+                    } else {
+                        tts.speak(finalResult, TextToSpeech.QUEUE_FLUSH, null);
+                    }
+                }
             }
         });
     }
 
-    private void captureCamera() {
-        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-
-        // 인텐트를 처리 할 카메라 액티비티가 있는지 확인
-        if (takePictureIntent.resolveActivity(getPackageManager()) != null) {
-
-            // 촬영한 사진을 저장할 파일 생성
-            File photoFile = null;
-
-            try {
-                //임시로 사용할 파일이므로 경로는 캐시폴더로
-                File tempDir = getCacheDir();
-
-                //임시촬영파일 세팅
-                String timeStamp = new SimpleDateFormat("yyyyMMdd").format(new Date());
-                String imageFileName = "Capture_" + timeStamp + "_"; //ex) Capture_20201206_
-
-                File tempImage = File.createTempFile(
-                        imageFileName,  /* 파일이름 */
-                        ".jpg",         /* 파일형식 */
-                        tempDir      /* 경로 */
-                );
-
-                // ACTION_VIEW 인텐트를 사용할 경로 (임시파일의 경로)
-                mCurrentPhotoPath = tempImage.getAbsolutePath();
-
-                photoFile = tempImage;
-
-            } catch (IOException e) {
-                //에러 로그는 이렇게 관리하는 편이 좋다.
-                Log.w(TAG, "파일 생성 에러!", e);
-            }
-
-            //파일이 정상적으로 생성되었다면 계속 진행
-            if (photoFile != null) {
-                //Uri 가져오기
-                Uri photoURI = FileProvider.getUriForFile(this,
-                        getPackageName() + ".fileprovider",
-                        photoFile);
-                //인텐트에 Uri담기
-                takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, photoURI);
-
-                //인텐트 실행
-                startActivityForResult(takePictureIntent, REQUEST_TAKE_PHOTO);
-            }
-        }
-    }
-
     //이미지저장 메소드
     private void saveImg() {
-
         try {
             //저장할 파일 경로
             File storageDir = new File(getFilesDir() + "/capture");
             if (!storageDir.exists()) //폴더가 없으면 생성.
                 storageDir.mkdirs();
 
-            String filename = "캡쳐파일" + ".jpg";
+            // 사진을 찍은 날짜를 파일 이름으로 사용
+            String timeStamp = new SimpleDateFormat("yyyyMMdd").format(new Date());
+            String filename = "Capture_" + timeStamp + ".jpeg";
 
             // 기존에 있다면 삭제
             File file = new File(storageDir, filename);
@@ -192,137 +220,6 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.w(TAG, "Capture Saving Error!", e);
             Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show();
-
-        }
-    }
-
-    private void loadImgArr() {
-        try {
-
-            File storageDir = new File(getFilesDir() + "/capture");
-            String filename = "캡쳐파일" + ".jpg";
-
-            File file = new File(storageDir, filename);
-            Bitmap bitmap = BitmapFactory.decodeStream(new FileInputStream(file));
-            ivCapture.setImageBitmap(bitmap);
-
-        } catch (Exception e) {
-            Log.w(TAG, "Capture loading Error!", e);
-            Toast.makeText(this, "load failed", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent intent) {
-        super.onActivityResult(requestCode, resultCode, intent);
-        try {
-            //after capture
-            switch (requestCode) {
-                case REQUEST_TAKE_PHOTO: {
-                    if (resultCode == RESULT_OK) {
-
-                        File file = new File(mCurrentPhotoPath);
-                        Bitmap bitmap = MediaStore.Images.Media
-                                .getBitmap(getContentResolver(), Uri.fromFile(file));
-
-                        if (bitmap != null) {
-                            ExifInterface ei = new ExifInterface(mCurrentPhotoPath);
-                            int orientation = ei.getAttributeInt(ExifInterface.TAG_ORIENTATION,
-                                    ExifInterface.ORIENTATION_UNDEFINED);
-
-                            Bitmap rotatedBitmap = null;
-                            switch (orientation) {
-
-                                case ExifInterface.ORIENTATION_ROTATE_90:
-                                    rotatedBitmap = rotateImage(bitmap, 90);
-                                    break;
-
-                                case ExifInterface.ORIENTATION_ROTATE_180:
-                                    rotatedBitmap = rotateImage(bitmap, 180);
-                                    break;
-
-                                case ExifInterface.ORIENTATION_ROTATE_270:
-                                    rotatedBitmap = rotateImage(bitmap, 270);
-                                    break;
-
-                                case ExifInterface.ORIENTATION_NORMAL:
-                                default:
-                                    rotatedBitmap = bitmap;
-                            }
-
-                            //Rotate한 bitmap을 ImageView에 저장
-                            ivCapture.setImageBitmap(rotatedBitmap);
-
-                        }
-                    }
-                    break;
-                }
-            }
-
-        } catch (Exception e) {
-            Log.w(TAG, "onActivityResult Error !", e);
-        }
-
-        if (requestCode == REQUEST_TAKE_PHOTO && resultCode == RESULT_OK) {
-            // 찍은 사진을 가져옴
-            Bitmap bitmap = BitmapFactory.decodeFile(mCurrentPhotoPath);
-
-            // 텍스트 변환 작업 실행
-            CaptionTask captionTask = new CaptionTask();
-            captionTask.execute(bitmap);
-        }
-    }
-
-    //카메라에 맞게 이미지 로테이션
-    public static Bitmap rotateImage(Bitmap source, float angle) {
-        Matrix matrix = new Matrix();
-        matrix.postRotate(angle);
-        return Bitmap.createBitmap(source, 0, 0, source.getWidth(), source.getHeight(),
-                matrix, true);
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        checkPermission(); //권한체크
-    }
-
-    //권한 확인
-    public void checkPermission() {
-        int permissionCamera = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA);
-        int permissionRead = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE);
-        int permissionWrite = ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
-
-        //권한이 없으면 권한 요청
-        if (permissionCamera != PackageManager.PERMISSION_GRANTED
-                || permissionRead != PackageManager.PERMISSION_GRANTED
-                || permissionWrite != PackageManager.PERMISSION_GRANTED) {
-
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.CAMERA)) {
-                Toast.makeText(this, "이 앱을 실행하기 위해 권한이 필요합니다.", Toast.LENGTH_SHORT).show();
-            }
-
-            ActivityCompat.requestPermissions(this, new String[]{
-                    Manifest.permission.CAMERA, Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_PERMISSION);
-
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        switch (requestCode) {
-            case REQUEST_PERMISSION: {
-                // 권한이 취소되면 result 배열은 비어있다.
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
-                    Toast.makeText(this, "권한 확인", Toast.LENGTH_LONG).show();
-
-                } else {
-                    Toast.makeText(this, "권한 없음", Toast.LENGTH_LONG).show();
-                    finish(); //권한이 없으면 앱 종료
-                }
-            }
         }
     }
 
@@ -334,7 +231,7 @@ public class MainActivity extends AppCompatActivity {
         protected String doInBackground(Bitmap... bitmaps) {
             Bitmap bitmap = bitmaps[0];
             ByteArrayOutputStream stream = new ByteArrayOutputStream();
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream);
             byte[] byteArray = stream.toByteArray();
 
             try {
@@ -348,8 +245,8 @@ public class MainActivity extends AppCompatActivity {
                 // 바이너리 데이터 전송을 위한 파트를 생성하고 전송
                 DataOutputStream out = new DataOutputStream(conn.getOutputStream());
                 out.writeBytes("--" + BOUNDARY + "\r\n");
-                out.writeBytes("Content-Disposition: form-data; name=\"image\";filename=\"" + "image.png" + "\"" + "\r\n");
-                out.writeBytes("Content-Type: image/png\r\n\r\n");
+                out.writeBytes("Content-Disposition: form-data; name=\"image\";filename=\"" + "image.jpeg" + "\"" + "\r\n");
+                out.writeBytes("Content-Type: image/jpeg\r\n\r\n");
                 out.write(byteArray);
                 out.writeBytes("\r\n");
                 out.writeBytes("--" + BOUNDARY + "--\r\n");
@@ -416,6 +313,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             });
+            ivCapture.setVisibility(View.GONE);
         }
 
         // multipart/form-data에서 사용하는 boundary 문자열을 생성합니다.

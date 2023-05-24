@@ -1,38 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/frameLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:gravity="center"
     android:orientation="vertical"
+    android:background="@color/black"
     tools:context=".MainActivity">
+
+    <com.sample.osogo_app.CameraSurfaceView
+        android:id="@+id/surfaceView"
+        android:layout_width="match_parent"
+        android:layout_height="600dp"
+        android:layout_gravity="center"
+        android:layout_marginBottom="30dp"
+        android:background="#1BF4EFEF"
+        android:padding="30dp" />
 
     <ImageView
         android:id="@+id/ivCapture"
-        android:layout_width="500dp"
-        android:layout_height="500dp"
+        android:layout_width="match_parent"
+        android:layout_height="600dp"
         android:padding="30dp"
+        android:background="#1BF4EFEF"
+        android:layout_gravity="center"
         android:layout_marginBottom="30dp"/>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="50dp"
         android:orientation="horizontal">
 
         <Button
             android:id="@+id/btnCapture"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginRight="15dp"
-            android:text="CAMERA" />
+            android:layout_width="70dp"
+            android:layout_height="70dp"
+            android:background="@drawable/circle_button" />
 
-        <Button
-            android:id="@+id/btnSave"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="15dp"
-            android:text="SAVE" />
     </LinearLayout>
 
-</LinearLayout>
+</FrameLayout>

@@ -18,14 +18,7 @@ public class DialogActivity extends Dialog {
 
         txt_contents = findViewById(R.id.txt_contents);
         txt_contents.setText(contents);
-        shutdownClick = findViewById(R.id.btn_shutdown);
-        shutdownClick.setOnClickListener(new View.OnClickListener() {
 
-            @Override
-            public void onClick(View v) {
-                dismiss();
-            }
-        });
 
     }
 }
