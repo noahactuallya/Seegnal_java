@@ -45,6 +45,8 @@
                 android:name="android.app.lib_name"
                 android:value="" />
         </activity>
+        <activity android:name=".ImageCaptionActivity"/>
+        <activity android:name=".OCRActivity"/>
     </application>
 
 </manifest>
