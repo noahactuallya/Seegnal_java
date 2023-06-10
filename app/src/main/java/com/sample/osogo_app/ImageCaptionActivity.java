@@ -38,7 +38,9 @@ import android.util.Base64;
 import android.util.Log;
 import android.util.SparseIntArray;
 import android.util.Size;
+import android.view.GestureDetector;
 import android.view.LayoutInflater;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
@@ -94,10 +96,12 @@ public class ImageCaptionActivity extends AppCompatActivity {
     private int REQUEST_CODE_PERMISSIONS = 100;
     private final String[] REQUIRED_PERMISSIONS = new String[]{"android.permission.CAMERA"};
     private static final String TAG = "ImageCaptionActivity";
+    private GestureDetector gestureDetector;
+    private int SWIPE_VELOCITY_THRESHOLD = 50;
+    private int SWIPE_THRESHOLD = 100;
 
     // 뷰 객체
-    private ImageButton btnCapture, btnChange, btnInfo;
-    private Button btnIC, btnOCR;
+    private ImageButton btnCapture;
     private TextureView textureView;
     private TextToSpeech tts;
 
@@ -133,8 +137,6 @@ public class ImageCaptionActivity extends AppCompatActivity {
 
         textureView = (TextureView) findViewById(R.id.textureView);
         btnCapture = (ImageButton) findViewById(R.id.btnCapture);
-        btnChange = (ImageButton) findViewById(R.id.btnChange);
-        btnInfo = (ImageButton) findViewById(R.id.btnInfo);
 
         if (allPermissionsGranted()) {
             startCamera(); //start camera if permission has been granted by user
@@ -143,8 +145,16 @@ public class ImageCaptionActivity extends AppCompatActivity {
         }
 
 
-        String info = "Image Caption";
+        String info = "상황 인식";
         onPostExecute_Info(info);
+
+        gestureDetector = new GestureDetector(this, new GestureListener());
+
+        View myView = findViewById(R.id.myView);
+        myView.setOnTouchListener((v, event) -> {
+            gestureDetector.onTouchEvent(event);
+            return true;
+        });
     }
 
     protected void onPostExecute_Info(String result) {
@@ -166,6 +176,55 @@ public class ImageCaptionActivity extends AppCompatActivity {
             }
         });
     }
+
+    private class GestureListener extends GestureDetector.SimpleOnGestureListener {
+        @Override
+        public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+            // 스와이프 방향을 판단하기 위한 코드
+            float diffY = e2.getY() - e1.getY();
+            float diffX = e2.getX() - e1.getX();
+
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                if (Math.abs(diffX) > SWIPE_THRESHOLD && Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
+                    if (diffX > 0) {
+                        onSwipeRight();
+                    } else {
+                        onSwipeLeft();
+                    }
+                }
+            } else {
+                if (Math.abs(diffY) > SWIPE_THRESHOLD && Math.abs(velocityY) > SWIPE_VELOCITY_THRESHOLD) {
+                    if (diffY > 0) {
+                        onSwipeDown();
+                    } else {
+                        onSwipeUp();
+                    }
+                }
+            }
+            return true;
+        }
+
+        // 여기에서 각 방향으로 스와이프할 때 수행할 작업을 정의합니다.
+        public void onSwipeRight() {
+            // TODO: 오른쪽으로 스와이프했을 때 처리할 작업
+        }
+
+        public void onSwipeLeft() {
+            // TODO: 왼쪽으로 스와이프했을 때 처리할 작업
+            Intent intent = new Intent(getApplicationContext(), OCRActivity.class);
+            startActivity(intent);
+            finish();
+        }
+
+        public void onSwipeUp() {
+            // TODO: 위로 스와이프했을 때 처리할 작업
+        }
+
+        public void onSwipeDown() {
+            // TODO: 아래로 스와이프했을 때 처리할 작업
+        }
+    }
+
 
     @Override
     protected void onResume() {
@@ -241,15 +300,6 @@ public class ImageCaptionActivity extends AppCompatActivity {
                 } catch (CameraAccessException e) {
                     e.printStackTrace();
                 }
-            }
-        });
-
-        btnChange.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Intent intent = new Intent(getApplicationContext(), OCRActivity.class);
-                startActivity(intent);
-                finish();
             }
         });
     }
@@ -465,11 +515,11 @@ public class ImageCaptionActivity extends AppCompatActivity {
             if (result != null) {
                 // 텍스트 내용을 팝업 메세지로 출력
                 AlertDialog.Builder builder = new AlertDialog.Builder(ImageCaptionActivity.this);
-                builder.setTitle("ImageCaption").setMessage(result);
-                builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                builder.setTitle("상황 인식").setMessage(result);
+                builder.setPositiveButton("확인", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialogInterface, int i) {
-                        finish();
+                        ;
                     }
                 });
                 AlertDialog alertDialog = builder.create();
@@ -477,11 +527,11 @@ public class ImageCaptionActivity extends AppCompatActivity {
             } else {
                 result = "서버와의 통신에 문제가 발생했습니다.";
                 AlertDialog.Builder builder = new AlertDialog.Builder(ImageCaptionActivity.this);
-                builder.setTitle("ImageCaption").setMessage(result);
-                builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                builder.setTitle("상황 인식").setMessage(result);
+                builder.setPositiveButton("확인", new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialogInterface, int i) {
-                        finish();
+                        ;
                     }
                 });
                 AlertDialog alertDialog = builder.create();
